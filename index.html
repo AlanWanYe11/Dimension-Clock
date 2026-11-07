@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>次元时钟</title>
+    <script src="https://cdn.jsdelivr.net/npm/lunar-javascript@1.6.12/lunar.js"></script>
+    <style>
+        :root {
+            --primary-glow: rgba(255, 105, 180, 0.6);
+            --text-color: #ffffff;
+            --glass-bg: rgba(10, 15, 30, 0.35);
+            --glass-border: rgba(255, 255, 255, 0.15);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #030612; 
+            color: var(--text-color);
+        }
+
+        /* ================= 背景自适应核心逻辑 ================= */
+        
+        /* 默认（手机竖屏端）背景设置 */
+        .background {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            background-image: url('bg-mobile.jpg'); /* 默认使用竖版手机图 */
+            background-size: cover; 
+            background-repeat: no-repeat;
+            background-position: center 40%; /* 稍微偏下，展现手机竖图的人物和花朵 */
+            transition: background-image 0.5s ease, background-position 0.5s ease;
+        }
+
+        /* 电脑端 / 平板端 (屏幕宽度 >= 768px) */
+        @media (min-width: 768px) {
+            .background {
+                background-image: url('bg-desktop.jpg'); /* 切换为横版电脑图 */
+                background-position: center center; /* 横图居中显示 */
+            }
+        }
+
+        /* 手机横屏时 (防止手机横过来时误用电脑图或被裁切) */
+        @media (max-width: 767px) and (orientation: landscape) {
+            .background {
+                background-image: url('bg-mobile.jpg'); 
+                background-position: center 25%; /* 手机横过来时，焦点上移对准人脸 */
+            }
+        }
+
+        /* 增加一层极简的渐变暗角，突出中间人物，保证文字清晰 */
+        .background::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0.1) 30%, rgba(0,0,0,0.1) 70%, rgba(0,0,0,0.6) 100%);
+        }
+        /* ========================================================= */
+
+        /* 主容器 */
+        .container {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            padding-top: max(5vh, env(safe-area-inset-top));
+            padding-bottom: max(5vh, env(safe-area-inset-bottom));
+            padding-left: 5vw;
+            padding-right: 5vw;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+        }
+
+        /* 顶部：时区选择器 */
+        .header {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            margin-top: 10px;
+        }
+
+        .timezone-selector {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 1rem;
+            outline: none;
+            cursor: pointer;
+            appearance: none;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            transition: all 0.3s ease;
+            text-shadow: none;
+        }
+
+        .timezone-selector:hover {
+            background: rgba(10, 15, 30, 0.6);
+            box-shadow: 0 0 20px var(--primary-glow);
+        }
+
+        .timezone-selector option { background: #111; color: #fff; }
+
+        /* 中部：时间 */
+        .main-time {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex-grow: 1;
+            width: 100%;
+            margin-top: -5vh; 
+            transition: all 0.5s ease;
+        }
+
+        .time-wrapper {
+            white-space: nowrap;
+            text-align: center;
+        }
+
+        #clock {
+            font-size: clamp(4rem, 16vw, 13rem);
+            font-weight: 800;
+            letter-spacing: 5px;
+            line-height: 1;
+            text-shadow: 0 0 20px rgba(255, 255, 255, 0.4), 0 0 40px var(--primary-glow);
+            font-variant-numeric: tabular-nums;
+            animation: pulse 4s infinite alternate;
+        }
+
+        #seconds {
+            font-size: clamp(1.5rem, 4vw, 3rem);
+            vertical-align: top;
+            margin-left: 5px;
+            font-weight: 400;
+            color: #ffb6c1;
+            text-shadow: 0 0 10px rgba(255, 182, 193, 0.6);
+        }
+
+        #greeting {
+            margin-top: 15px;
+            font-size: clamp(0.9rem, 2vw, 1.5rem);
+            letter-spacing: 2px;
+            opacity: 0.9;
+        }
+
+        /* 底部：日期等 */
+        .footer {
+            text-align: center;
+            padding: 15px 30px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            margin-bottom: 10px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+            width: 100%;
+            max-width: 800px;
+            text-shadow: none;
+            transition: transform 0.3s ease;
+        }
+
+        .footer:hover { transform: translateY(-2px); }
+
+        .date-line {
+            font-size: clamp(0.9rem, 2vw, 1.2rem);
+            font-weight: 500;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .lunar-line {
+            font-size: clamp(0.75rem, 1.5vw, 0.95rem);
+            color: #dcdcdc;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 10px;
+            opacity: 0.85;
+        }
+
+        .tag {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 2px 10px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        @keyframes pulse {
+            0% { text-shadow: 0 0 20px rgba(255, 255, 255, 0.3), 0 0 40px rgba(255, 105, 180, 0.3); }
+            100% { text-shadow: 0 0 30px rgba(255, 255, 255, 0.6), 0 0 60px rgba(255, 105, 180, 0.8); }
+        }
+
+        /* ================= 排版适配 ================= */
+        
+        /* 电脑端排版微调 */
+        @media (min-width: 768px) {
+            .main-time {
+                margin-top: 5vh; 
+                transform: translateY(5vh);
+            }
+            #clock {
+                font-size: clamp(4rem, 12vw, 10rem);
+            }
+        }
+
+        /* 手机竖屏微调 */
+        @media (max-width: 600px) and (orientation: portrait) {
+            .main-time { margin-top: -2vh; }
+            #clock { letter-spacing: 2px; }
+            .footer { padding: 10px 15px; }
+        }
+
+        /* 横屏手机 (高度极小) 降级排版 */
+        @media (max-height: 500px) and (orientation: landscape) {
+            .container { padding-top: 2vh; padding-bottom: 2vh; }
+            .main-time { transform: translateY(0); margin-top: 0; }
+            #clock { font-size: 4rem; }
+            #seconds { font-size: 1.2rem; }
+            #greeting { display: none; }
+            .footer { padding: 5px 15px; margin-bottom: 0; max-width: 90%; }
+            .header { margin-top: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 纯背景层 -->
+    <div class="background"></div>
+
+    <!-- 内容层 -->
+    <div class="container">
+        
+        <div class="header">
+            <select id="timezone-select" class="timezone-selector"></select>
+        </div>
+
+        <div class="main-time">
+            <div class="time-wrapper">
+                <span id="clock">00:00</span><span id="seconds">00</span>
+            </div>
+            <div id="greeting">你好，星空下的旅人</div>
+        </div>
+
+        <div class="footer">
+            <div class="date-line" id="solar-date">加载日期中...</div>
+            <div class="lunar-line" id="lunar-info"></div>
+        </div>
+
+    </div>
+
+    <script>
+        let currentTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        let timeOffset = 0;
+
+        function initTimezoneSelect() {
+            const select = document.getElementById('timezone-select');
+            const zones = [
+                { label: "北京 (UTC+8)", value: "Asia/Shanghai" },
+                { label: "东京 (UTC+9)", value: "Asia/Tokyo" },
+                { label: "纽约 (UTC-5/-4)", value: "America/New_York" },
+                { label: "伦敦 (UTC+0/+1)", value: "Europe/London" },
+                { label: "巴黎 (UTC+1/+2)", value: "Europe/Paris" },
+                { label: "洛杉矶 (UTC-8/-7)", value: "America/Los_Angeles" },
+                { label: "悉尼 (UTC+10/+11)", value: "Australia/Sydney" },
+                { label: "本地时区", value: Intl.DateTimeFormat().resolvedOptions().timeZone }
+            ];
+
+            zones.forEach(zone => {
+                const option = document.createElement('option');
+                option.value = zone.value;
+                option.textContent = zone.label;
+                select.appendChild(option);
+            });
+
+            select.value = currentTimezone;
+            select.addEventListener('change', (e) => {
+                currentTimezone = e.target.value;
+                updateTime(true);
+            });
+        }
+
+        async function autoDetectTimezone() {
+            try {
+                const res = await fetch('/cdn-cgi/trace');
+                const text = await res.text();
+                const lines = text.split('\n');
+                const locLine = lines.find(line => line.startsWith('loc='));
+                if (locLine) {
+                    const countryCode = locLine.split('=')[1];
+                    const map = { 'CN': 'Asia/Shanghai', 'JP': 'Asia/Tokyo', 'US': 'America/New_York', 'GB': 'Europe/London', 'FR': 'Europe/Paris', 'AU': 'Australia/Sydney', 'RU': 'Europe/Moscow' };
+                    if (map[countryCode]) {
+                        currentTimezone = map[countryCode];
+                        document.getElementById('timezone-select').value = currentTimezone;
+                    }
+                }
+            } catch (e) { console.log("IP时区检测跳过，使用系统默认。"); }
+        }
+
+        async function syncInternetTime() {
+            try {
+                const start = Date.now();
+                const res = await fetch(window.location.href, { method: 'HEAD', cache: 'no-store' });
+                const end = Date.now();
+                const serverDate = new Date(res.headers.get('date'));
+                if (serverDate && !isNaN(serverDate.getTime())) {
+                    timeOffset = serverDate.getTime() + ((end - start) / 2) - end;
+                }
+            } catch (e) { console.warn("时间同步失败，使用本地时间"); }
+        }
+
+        function updateTime(forceUpdate = false) {
+            const now = new Date(Date.now() + timeOffset);
+            
+            const formatter = new Intl.DateTimeFormat('zh-CN', { timeZone: currentTimezone, hour12: false, hour: '2-digit', minute: '2-digit' });
+            const secFormatter = new Intl.DateTimeFormat('zh-CN', { timeZone: currentTimezone, hour12: false, second: '2-digit' });
+            
+            document.getElementById('clock').textContent = formatter.format(now);
+            document.getElementById('seconds').textContent = secFormatter.format(now);
+
+            const dateFormatter = new Intl.DateTimeFormat('en-US', { timeZone: currentTimezone, year: 'numeric', month: 'numeric', day: 'numeric', weekday: 'long' });
+            const parts = dateFormatter.formatToParts(now);
+            const year = parseInt(parts.find(p => p.type === 'year').value);
+            const month = parseInt(parts.find(p => p.type === 'month').value) - 1;
+            const day = parseInt(parts.find(p => p.type === 'day').value);
+            const weekday = parts.find(p => p.type === 'weekday').value;
+            
+            const weekdaysZH = { 'Monday': '星期一', 'Tuesday': '星期二', 'Wednesday': '星期三', 'Thursday': '星期四', 'Friday': '星期五', 'Saturday': '星期六', 'Sunday': '星期日' };
+            const zhWeekday = weekdaysZH[weekday] || weekday;
+
+            if (forceUpdate || now.getSeconds() === 0) {
+                document.getElementById('solar-date').textContent = `${year}年${month + 1}月${day}日 ${zhWeekday}`;
+                try {
+                    const solar = Solar.fromYmd(year, month + 1, day);
+                    const lunar = solar.getLunar();
+                    const lunarText = `农历 ${lunar.getMonthInChinese()}月${lunar.getDayInChinese()}`;
+                    const jieQi = lunar.getJieQi();
+                    const festivals = solar.getFestivals().concat(lunar.getFestivals());
+                    
+                    let infoHtml = `<span class="tag">${lunarText}</span>`;
+                    if (jieQi) infoHtml += `<span class="tag" style="color: #ffb6c1; border-color: #ffb6c1;">✨ ${jieQi}</span>`;
+                    if (festivals.length > 0) infoHtml += `<span class="tag" style="color: #87ceeb; border-color: #87ceeb;">🎉 ${festivals.join(' ')}</span>`;
+                    
+                    document.getElementById('lunar-info').innerHTML = infoHtml;
+                } catch (e) { document.getElementById('lunar-info').textContent = "农历信息加载失败"; }
+            }
+            
+            const hour = parseInt(formatter.format(now).split(':')[0]);
+            let greeting = "你好，星空下的旅人";
+            if (hour >= 5 && hour < 12) greeting = "早安，愿星辰指引你前行";
+            else if (hour >= 12 && hour < 18) greeting = "午安旅行者，吃饱喝饱，再出发冒险";
+            else if (hour >= 18 && hour < 23) greeting = "晚安，沉醉于这片星海";
+            else greeting = "夜深了，前面的区域以后再来探索吧";
+            document.getElementById('greeting').textContent = greeting;
+        }
+
+        async function init() {
+            initTimezoneSelect();
+            await autoDetectTimezone();
+            await syncInternetTime();
+            updateTime(true);
+            setInterval(() => updateTime(false), 1000);
+            setInterval(syncInternetTime, 30 * 60 * 1000);
+        }
+
+        window.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
